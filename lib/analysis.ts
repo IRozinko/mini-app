@@ -3,6 +3,10 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
+const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 30000);
+const SAFE_ANALYSIS_ERROR =
+  "Не вдалося виконати LLM-аналіз. Перевірте налаштування провайдера та повторіть спробу.";
+
 const biasSchema = z.object({
   name: z.string().min(1),
   explanation: z.string().min(1)
@@ -52,44 +56,56 @@ function extractJson(content: string) {
 async function callLlm(messages: ChatMessage[]) {
   const apiKey = process.env.LLM_API_KEY;
   if (!apiKey) {
-    throw new Error("LLM_API_KEY is not configured.");
+    throw new Error("LLM_API_KEY is not configured");
   }
 
   const baseUrl = process.env.LLM_BASE_URL ?? "https://api.openai.com/v1";
   const model = process.env.LLM_MODEL ?? "gpt-4o-mini";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
 
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
+  try {
+    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.25,
+        response_format: { type: "json_object" }
+      })
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`LLM request failed (${response.status}): ${body.slice(0, 1000)}`);
+    }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error("LLM response was empty");
+    }
+
+    return {
+      content,
       model,
-      messages,
-      temperature: 0.25,
-      response_format: { type: "json_object" }
-    })
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`LLM request failed (${response.status}): ${body.slice(0, 300)}`);
+      provider: baseUrl.includes("openai.com") ? "openai" : baseUrl
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`LLM request timed out after ${LLM_TIMEOUT_MS}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("LLM response was empty.");
-  }
-
-  return {
-    content,
-    model,
-    provider: baseUrl.includes("openai.com") ? "openai" : baseUrl
-  };
 }
 
 export async function analyzeDecisionForUser(decisionId: string, userId: string) {
@@ -176,13 +192,17 @@ export async function analyzeDecisionForUser(decisionId: string, userId: string)
       })
     ]);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown LLM analysis failure.";
+    console.error("Decision analysis failed", {
+      decisionId: decision.id,
+      userId,
+      error
+    });
+
     await prisma.decision.update({
       where: { id: decision.id },
       data: {
         status: "FAILED",
-        errorMessage: message.slice(0, 1000)
+        errorMessage: SAFE_ANALYSIS_ERROR
       }
     });
     throw error;

@@ -186,6 +186,11 @@ export default async function DashboardPage({
                   <p className="mt-2 line-clamp-3 text-sm leading-6 text-stone-600">
                     {item.situation}
                   </p>
+                  {item.analysis?.summary ? (
+                    <p className="mt-3 line-clamp-2 rounded-md bg-stone-50 px-3 py-2 text-sm leading-6 text-stone-700">
+                      {item.analysis.summary}
+                    </p>
+                  ) : null}
                 </div>
                 <Link className="button-secondary shrink-0" href={`/decisions/${item.id}`}>
                   Деталі

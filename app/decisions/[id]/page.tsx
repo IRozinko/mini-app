@@ -43,7 +43,7 @@ export default async function DecisionDetailPage({
   }
 
   const shouldStart =
-    searchParams.start === "1" || decision.status === DecisionStatus.PROCESSING;
+    searchParams.start === "1" && decision.status === DecisionStatus.PROCESSING;
   const analysis = decision.analysis;
   const biases = toBiases(analysis?.cognitiveBiases);
   const alternatives = toAlternatives(analysis?.missedAlternatives);

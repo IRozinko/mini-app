@@ -6,8 +6,8 @@ The app implements registration, login, protected pages, PostgreSQL persistence,
 
 ## Links
 
-- GitHub repository URL: `TODO: add public GitHub repository URL`
-- Demo URL: `TODO: add deployed demo URL`
+- GitHub repository URL: https://github.com/IRozinko/mini-app
+- Demo URL: `TODO: add deployed demo URL after Vercel/Railway/Render deployment`
 
 Deployment was not performed from this environment because no hosting account or production database credentials were available. The project is ready to deploy; exact steps are below.
 
@@ -142,11 +142,13 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 LLM_API_KEY="your-provider-api-key"
 LLM_MODEL="gpt-4o-mini"
 LLM_BASE_URL="https://api.openai.com/v1"
+LLM_TIMEOUT_MS="30000"
 ```
 
 Notes:
 
 - `LLM_BASE_URL` is OpenAI-compatible. For OpenAI, keep `https://api.openai.com/v1`.
+- `LLM_TIMEOUT_MS` controls the server-side LLM request timeout.
 - If `LLM_API_KEY` is missing, analysis correctly fails and stores a `FAILED` state.
 - Do not commit `.env`.
 
@@ -167,7 +169,7 @@ cp .env.example .env
 Start PostgreSQL in Docker:
 
 ```bash
-docker compose up -d postgres
+npm run db:up
 ```
 
 The local database runs on `localhost:5432` with:
@@ -179,13 +181,13 @@ The local database runs on `localhost:5432` with:
 Stop the database:
 
 ```bash
-docker compose down
+npm run db:down
 ```
 
 Delete local database data and start fresh:
 
 ```bash
-docker compose down -v
+npm run db:reset
 ```
 
 Install dependencies:
@@ -211,6 +213,12 @@ Equivalent direct Prisma commands:
 ```bash
 npx prisma generate
 npx prisma migrate dev
+```
+
+Open Prisma Studio:
+
+```bash
+npm run db:studio
 ```
 
 Start the development server:

@@ -15,9 +15,16 @@ export async function POST(
     await analyzeDecisionForUser(params.id, user.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Analysis failed unexpectedly.";
-    const status = message === "Decision not found." ? 404 : 500;
-    return NextResponse.json({ error: message }, { status });
+    const status =
+      error instanceof Error && error.message === "Decision not found." ? 404 : 500;
+    return NextResponse.json(
+      {
+        error:
+          status === 404
+            ? "Decision not found."
+            : "Не вдалося виконати LLM-аналіз. Спробуйте ще раз пізніше."
+      },
+      { status }
+    );
   }
 }
