@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DecisionStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+  decisions    Decision[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Decision {
+  id           String            @id @default(cuid())
+  userId       String
+  situation    String
+  decision     String
+  reasoning    String?
+  status       DecisionStatus    @default(PROCESSING)
+  errorMessage String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis     DecisionAnalysis?
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model DecisionAnalysis {
+  id                  String   @id @default(cuid())
+  decisionId          String   @unique
+  category            String
+  cognitiveBiases     Json
+  missedAlternatives  Json
+  summary             String?
+  risks               Json?
+  reflectionQuestions Json?
+  nextSteps           Json?
+  qualityScore        Int?
+  rawResponse         Json?
+  provider            String?
+  model               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  decision            Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+}
