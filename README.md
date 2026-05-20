@@ -184,20 +184,23 @@ Required values:
 
 ```bash
 DATABASE_URL="postgresql://decision_user:decision_password@localhost:5432/decision_insight?schema=public"
-SESSION_SECRET="replace-with-a-long-random-secret"
+SESSION_SECRET="replace-with-a-long-random-secret-at-least-32-chars"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 LLM_API_KEY="your-provider-api-key"
 LLM_MODEL="gpt-4o-mini"
 LLM_BASE_URL="https://api.openai.com/v1"
 LLM_TIMEOUT_MS="30000"
 LLM_TEST_MODE=""
+DEBUG_STORE_RAW_LLM_RESPONSE="false"
 ```
 
 Notes:
 
+- `SESSION_SECRET` is required outside strict local development and must be at least 32 characters. Generate one with `openssl rand -base64 48`.
 - `LLM_BASE_URL` is OpenAI-compatible. For OpenAI, keep `https://api.openai.com/v1`.
 - `LLM_TIMEOUT_MS` controls the server-side LLM request timeout.
 - `LLM_TEST_MODE=mock` enables deterministic local smoke tests without an external LLM call.
+- Raw LLM responses are not stored by default for privacy/data minimization. Set `DEBUG_STORE_RAW_LLM_RESPONSE=true` only temporarily when debugging; stored payloads are truncated.
 - If `LLM_API_KEY` is missing, analysis correctly fails and stores a `FAILED` state.
 - Do not commit `.env`.
 
@@ -432,9 +435,11 @@ LLM_API_KEY=
 LLM_MODEL=gpt-4o-mini
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_TIMEOUT_MS=30000
+DEBUG_STORE_RAW_LLM_RESPONSE=false
 ```
 
 Do not set `LLM_TEST_MODE` in production. It is only for deterministic local/smoke tests.
+`SESSION_SECRET` must be at least 32 characters in Vercel Preview and Production.
 
 5. Set build command:
 

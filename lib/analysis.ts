@@ -1,9 +1,10 @@
 import "server-only";
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { llmAnalysisSchema } from "@/lib/analysis-schema";
 import { parseLlmJsonContent } from "@/lib/llm-json";
 import { prisma } from "@/lib/prisma";
+import { getStoredRawResponse } from "@/lib/stored-raw-response";
 
 const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 30000);
 const SAFE_ANALYSIS_ERROR =
@@ -139,7 +140,7 @@ export async function analyzeDecisionForUser(decisionId: string, userId: string)
     const llm = await callLlm(messages);
     const parsedJson = parseLlmJsonContent(llm.content);
     const normalized = llmAnalysisSchema.parse(parsedJson);
-    const rawResponse = parsedJson as Prisma.InputJsonValue;
+    const rawResponse = getStoredRawResponse(parsedJson) ?? Prisma.DbNull;
     const analysisData = {
       category: normalized.category,
       cognitiveBiases: normalized.cognitiveBiases,

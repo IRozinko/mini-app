@@ -5,6 +5,7 @@ node_modules
 out
 dist
 coverage
+test-results
 *.log
 tsconfig.tsbuildinfo
 prisma/dev.db

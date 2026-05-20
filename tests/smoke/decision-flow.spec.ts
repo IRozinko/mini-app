@@ -26,7 +26,7 @@ test("registers a user, creates a decision, and shows it on dashboard", async ({
   await page.getByRole("button", { name: "Зберегти і проаналізувати" }).click();
 
   await expect(page.getByText("Аналіз рішення")).toBeVisible();
-  await page.getByRole("link", { name: "Історія рішень" }).click();
+  await page.getByRole("main").getByRole("link", { name: "Історія рішень" }).click();
 
   await expect(page.getByText(decision)).toBeVisible();
   await expect(page.getByText("Тестовий LLM-аналіз")).toBeVisible();

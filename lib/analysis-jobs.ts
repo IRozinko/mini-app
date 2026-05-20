@@ -3,7 +3,8 @@ import "server-only";
 import {
   AnalysisJobStatus,
   AnalysisJobTrigger,
-  DecisionStatus
+  DecisionStatus,
+  Prisma
 } from "@prisma/client";
 import { analyzeDecisionForUser } from "@/lib/analysis";
 import { prisma } from "@/lib/prisma";
@@ -20,52 +21,94 @@ export async function enqueueAnalysisJob({
   userId: string;
   trigger: AnalysisJobTrigger;
 }) {
-  const [, job] = await prisma.$transaction([
-    prisma.decision.update({
-      where: { id: decisionId },
-      data: {
-        status: DecisionStatus.PROCESSING,
-        errorMessage: null
-      }
-    }),
-    prisma.analysisJob.create({
-      data: {
-        decisionId,
-        userId,
-        trigger,
-        status: AnalysisJobStatus.QUEUED
-      }
-    })
-  ]);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          await tx.decision.update({
+            where: { id: decisionId },
+            data: {
+              status: DecisionStatus.PROCESSING,
+              errorMessage: null
+            }
+          });
 
-  return job;
+          const existingJob = await tx.analysisJob.findFirst({
+            where: {
+              decisionId,
+              userId,
+              status: {
+                in: [AnalysisJobStatus.QUEUED, AnalysisJobStatus.RUNNING]
+              }
+            },
+            orderBy: { createdAt: "desc" }
+          });
+
+          if (existingJob) {
+            return existingJob;
+          }
+
+          return tx.analysisJob.create({
+            data: {
+              decisionId,
+              userId,
+              trigger,
+              status: AnalysisJobStatus.QUEUED
+            }
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2034" &&
+        attempt === 0
+      ) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error("Unable to enqueue analysis job.");
 }
 
 export async function processAnalysisJob(jobId: string, userId: string) {
-  const job = await prisma.analysisJob.findFirst({
+  const now = new Date();
+  const claim = await prisma.analysisJob.updateMany({
     where: {
       id: jobId,
       userId,
       status: AnalysisJobStatus.QUEUED
+    },
+    data: {
+      status: AnalysisJobStatus.RUNNING,
+      attempts: {
+        increment: 1
+      },
+      lockedAt: now,
+      startedAt: now,
+      errorMessage: null
+    }
+  });
+
+  if (claim.count !== 1) {
+    return null;
+  }
+
+  const job = await prisma.analysisJob.findFirst({
+    where: {
+      id: jobId,
+      userId,
+      status: AnalysisJobStatus.RUNNING
     }
   });
 
   if (!job) {
     return null;
   }
-
-  await prisma.analysisJob.update({
-    where: { id: job.id },
-    data: {
-      status: AnalysisJobStatus.RUNNING,
-      attempts: {
-        increment: 1
-      },
-      lockedAt: new Date(),
-      startedAt: new Date(),
-      errorMessage: null
-    }
-  });
 
   try {
     await analyzeDecisionForUser(job.decisionId, job.userId);

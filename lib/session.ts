@@ -10,11 +10,21 @@ const SESSION_DAYS = 30;
 
 function sessionSecret() {
   const secret = process.env.SESSION_SECRET;
-  if (!secret && process.env.NODE_ENV === "production") {
-    throw new Error("SESSION_SECRET is required in production.");
+  if (secret) {
+    if (secret.length < 32) {
+      throw new Error("SESSION_SECRET must be at least 32 characters long.");
+    }
+
+    return secret;
   }
 
-  return secret ?? "local-development-session-secret";
+  if (process.env.NODE_ENV === "development" && !process.env.VERCEL) {
+    return "local-development-session-secret";
+  }
+
+  throw new Error(
+    "SESSION_SECRET is required outside local development and must be at least 32 characters long."
+  );
 }
 
 function hashToken(token: string) {
