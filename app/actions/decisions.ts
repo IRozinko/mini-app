@@ -1,6 +1,8 @@
 "use server";
 
+import { AnalysisJobTrigger } from "@prisma/client";
 import { redirect } from "next/navigation";
+import { enqueueAnalysisJob } from "@/lib/analysis-jobs";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { ActionState, decisionSchema } from "@/lib/validation";
@@ -40,6 +42,12 @@ export async function createDecisionAction(
     }
   });
 
+  await enqueueAnalysisJob({
+    decisionId: decision.id,
+    userId: user.id,
+    trigger: AnalysisJobTrigger.CREATE
+  });
+
   redirect(`/decisions/${decision.id}?start=1`);
 }
 
@@ -59,12 +67,10 @@ export async function reanalyzeDecisionAction(formData: FormData) {
     redirect("/dashboard");
   }
 
-  await prisma.decision.update({
-    where: { id: decision.id },
-    data: {
-      status: "PROCESSING",
-      errorMessage: null
-    }
+  await enqueueAnalysisJob({
+    decisionId: decision.id,
+    userId: user.id,
+    trigger: AnalysisJobTrigger.REANALYZE
   });
 
   redirect(`/decisions/${decision.id}?start=1`);
