@@ -336,11 +336,15 @@ Recommended deployment flow:
 
 The live application is available at https://mini-app-zeta-ebon.vercel.app.
 
+### Landing page
+
+![Decision Insight landing page](docs/screenshots/landing.svg)
+
 For final submission, include screenshots from the deployed app in the following locations:
 
 | Screen | Suggested file | What it should show |
 | --- | --- | --- |
-| Landing page | `docs/screenshots/landing.png` | Product positioning, primary CTA, login/register navigation |
+| Landing page | `docs/screenshots/landing.svg` | Product positioning, primary CTA, login/register navigation |
 | Register/Login | `docs/screenshots/auth.png` | Real authentication entry point |
 | Dashboard | `docs/screenshots/dashboard.png` | Private decision history, filters, status counters, bias summary |
 | New decision form | `docs/screenshots/new-decision.png` | Situation, accepted decision, optional reasoning fields |
