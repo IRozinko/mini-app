@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { analyzeDecisionForUser } from "@/lib/analysis";
 import { getCurrentUser } from "@/lib/session";
 
+export const maxDuration = 60;
+
 export async function POST(
   _request: Request,
   { params }: { params: { id: string } }
