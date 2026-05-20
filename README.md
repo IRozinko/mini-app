@@ -336,30 +336,47 @@ Recommended deployment flow:
 
 The live application is available at https://mini-app-zeta-ebon.vercel.app.
 
-### Landing page
+These screenshots were captured from the deployed Vercel demo.
 
-![Decision Insight landing page](docs/screenshots/landing.svg)
+| Screen | File |
+| --- | --- |
+| Landing page | [`docs/screenshots/landing.png`](docs/screenshots/landing.png) |
+| Login page | [`docs/screenshots/login.png`](docs/screenshots/login.png) |
+| Register page | [`docs/screenshots/register.png`](docs/screenshots/register.png) |
+| Dashboard with one analyzed decision | [`docs/screenshots/dashboard.png`](docs/screenshots/dashboard.png) |
+| Dashboard with multiple decisions and filters | [`docs/screenshots/dashboard-2.png`](docs/screenshots/dashboard-2.png) |
+| Empty new decision form | [`docs/screenshots/new-decision.png`](docs/screenshots/new-decision.png) |
+| New decision validation errors | [`docs/screenshots/new-decision-failed.png`](docs/screenshots/new-decision-failed.png) |
+| Decision processing state | [`docs/screenshots/decision-analysis.png`](docs/screenshots/decision-analysis.png) |
+| Successful analysis details | [`docs/screenshots/analysis-successful.png`](docs/screenshots/analysis-successful.png) |
 
-For final submission, include screenshots from the deployed app in the following locations:
+### Landing
 
-| Screen | Suggested file | What it should show |
-| --- | --- | --- |
-| Landing page | `docs/screenshots/landing.svg` | Product positioning, primary CTA, login/register navigation |
-| Register/Login | `docs/screenshots/auth.png` | Real authentication entry point |
-| Dashboard | `docs/screenshots/dashboard.png` | Private decision history, filters, status counters, bias summary |
-| New decision form | `docs/screenshots/new-decision.png` | Situation, accepted decision, optional reasoning fields |
-| Decision analysis | `docs/screenshots/decision-detail.png` | Original decision text and generated LLM analysis |
-| Failed/retry state | `docs/screenshots/analysis-failed.png` | Safe error message and retry/re-analysis behavior |
+![Decision Insight landing page](docs/screenshots/landing.png)
 
-Recommended capture flow:
+### Authentication
 
-```bash
-npm run db:up
-npm run prisma:migrate
-LLM_TEST_MODE=mock npm run dev
-```
+![Login page](docs/screenshots/login.png)
 
-Then open `http://localhost:3000`, register a temporary user, create a sample decision, and capture the screens above.
+![Register page](docs/screenshots/register.png)
+
+### Dashboard
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+![Dashboard with multiple decisions](docs/screenshots/dashboard-2.png)
+
+### New Decision
+
+![New decision form](docs/screenshots/new-decision.png)
+
+![New decision validation errors](docs/screenshots/new-decision-failed.png)
+
+### Analysis Flow
+
+![Decision processing state](docs/screenshots/decision-analysis.png)
+
+![Successful analysis details](docs/screenshots/analysis-successful.png)
 
 ## Manual Testing Checklist
 
