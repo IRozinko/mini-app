@@ -1,6 +1,10 @@
 import "server-only";
 
-import { AnalysisJobTrigger, DecisionStatus } from "@prisma/client";
+import {
+  AnalysisJobStatus,
+  AnalysisJobTrigger,
+  DecisionStatus
+} from "@prisma/client";
 import { analyzeDecisionForUser } from "@/lib/analysis";
 import { prisma } from "@/lib/prisma";
 
@@ -16,22 +20,25 @@ export async function enqueueAnalysisJob({
   userId: string;
   trigger: AnalysisJobTrigger;
 }) {
-  await prisma.decision.update({
-    where: { id: decisionId },
-    data: {
-      status: DecisionStatus.PROCESSING,
-      errorMessage: null
-    }
-  });
+  const [, job] = await prisma.$transaction([
+    prisma.decision.update({
+      where: { id: decisionId },
+      data: {
+        status: DecisionStatus.PROCESSING,
+        errorMessage: null
+      }
+    }),
+    prisma.analysisJob.create({
+      data: {
+        decisionId,
+        userId,
+        trigger,
+        status: AnalysisJobStatus.QUEUED
+      }
+    })
+  ]);
 
-  await prisma.analysisJob.create({
-    data: {
-      decisionId,
-      userId,
-      trigger,
-      status: "QUEUED"
-    }
-  });
+  return job;
 }
 
 export async function processAnalysisJob(jobId: string, userId: string) {
@@ -39,20 +46,18 @@ export async function processAnalysisJob(jobId: string, userId: string) {
     where: {
       id: jobId,
       userId,
-      status: {
-        in: ["QUEUED", "FAILED"]
-      }
+      status: AnalysisJobStatus.QUEUED
     }
   });
 
   if (!job) {
-    return;
+    return null;
   }
 
   await prisma.analysisJob.update({
     where: { id: job.id },
     data: {
-      status: "RUNNING",
+      status: AnalysisJobStatus.RUNNING,
       attempts: {
         increment: 1
       },
@@ -67,28 +72,66 @@ export async function processAnalysisJob(jobId: string, userId: string) {
     await prisma.analysisJob.update({
       where: { id: job.id },
       data: {
-        status: "DONE",
+        status: AnalysisJobStatus.DONE,
         finishedAt: new Date(),
         errorMessage: null
       }
     });
+    return AnalysisJobStatus.DONE;
   } catch (error) {
     console.error("Analysis job failed", { jobId: job.id, error });
     await prisma.analysisJob.update({
       where: { id: job.id },
       data: {
-        status: "FAILED",
+        status: AnalysisJobStatus.FAILED,
         finishedAt: new Date(),
         errorMessage: SAFE_JOB_ERROR
       }
     });
+    throw error;
   }
+}
+
+export async function failOpenAnalysisJobsForDecision({
+  decisionId,
+  userId,
+  errorMessage
+}: {
+  decisionId: string;
+  userId: string;
+  errorMessage: string;
+}) {
+  const now = new Date();
+
+  await prisma.$transaction([
+    prisma.analysisJob.updateMany({
+      where: {
+        decisionId,
+        userId,
+        status: {
+          in: [AnalysisJobStatus.QUEUED, AnalysisJobStatus.RUNNING]
+        }
+      },
+      data: {
+        status: AnalysisJobStatus.FAILED,
+        finishedAt: now,
+        errorMessage
+      }
+    }),
+    prisma.decision.update({
+      where: { id: decisionId },
+      data: {
+        status: DecisionStatus.FAILED,
+        errorMessage
+      }
+    })
+  ]);
 }
 
 export async function processNextQueuedAnalysisJob(limit = 3) {
   const jobs = await prisma.analysisJob.findMany({
     where: {
-      status: "QUEUED",
+      status: AnalysisJobStatus.QUEUED,
       runAfter: {
         lte: new Date()
       }

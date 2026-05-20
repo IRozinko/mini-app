@@ -33,9 +33,12 @@ For real LLM analysis, set `LLM_API_KEY` in `.env`. Without a key, the app still
 - Opaque HTTP-only session cookies stored as hashed tokens in PostgreSQL.
 - Protected dashboard, new decision page, and decision details page.
 - Per-user authorization and ownership checks on every server action/API route.
-- Decision creation with Zod validation and preserved form values on validation errors.
+- Decision creation and editing with Zod validation and preserved form values on validation errors.
+- Owner-only edit and delete actions for decisions.
 - Real LLM integration through a server-only OpenAI-compatible chat completions endpoint.
-- Structured analysis stored in `DecisionAnalysis`.
+- DB-backed analysis jobs with persisted `QUEUED`, `RUNNING`, `DONE`, and `FAILED` states.
+- Latest structured analysis stored in `DecisionAnalysis` and successful analysis history stored in `DecisionAnalysisRun`.
+- Basic per-user LLM rate limiting to protect against cost spikes.
 - Status lifecycle: `PROCESSING`, `READY`, `FAILED`.
 - Client-side polling while analysis is processing.
 - Retry/re-analysis button for failed or existing analyses.
@@ -47,10 +50,11 @@ For real LLM analysis, set `LLM_API_KEY` in `.env`. Without a key, the app still
 1. A visitor opens the landing page and chooses to register or log in.
 2. After authentication, the user lands on a private dashboard with their own decision history.
 3. The user creates a new decision record by describing the situation, the accepted decision, and optional reasoning.
-4. The record is saved immediately with `PROCESSING` status and the protected analysis endpoint starts the LLM analysis.
-5. The decision details page polls the server until the analysis becomes `READY` or `FAILED`.
+4. The record is saved immediately with `PROCESSING` status and a database-backed `AnalysisJob` is queued.
+5. The decision details page triggers the protected analysis endpoint, which processes the latest queued job and polls status until the analysis becomes `READY` or `FAILED`.
 6. When the analysis is ready, the app shows the decision category, possible cognitive biases, missed alternatives, risk factors, reflection questions, practical next steps, and quality score.
-7. The dashboard summarizes all user decisions with status counters, category filters, sorting, score badges, and the most frequent cognitive biases.
+7. The user can edit a decision, delete it, retry a failed analysis, or re-analyze an existing decision.
+8. The dashboard summarizes all user decisions with status counters, category filters, sorting, score badges, and the most frequent cognitive biases.
 
 ## Evaluation Highlights
 
@@ -77,11 +81,13 @@ For real LLM analysis, set `LLM_API_KEY` in `.env`. Without a key, the app still
 The application uses server components for protected pages and server actions/API routes for mutations.
 
 - `app/actions/auth.ts` handles registration, login, and logout.
-- `app/actions/decisions.ts` handles decision creation and re-analysis reset.
-- `app/api/decisions/[id]/analyze/route.ts` triggers server-side LLM analysis.
-- `app/api/decisions/[id]/route.ts` returns owned decision status for polling.
+- `app/actions/decisions.ts` handles decision creation, editing, deletion, and re-analysis reset.
+- `app/api/decisions/[id]/analyze/route.ts` processes the latest queued analysis job through server-side LLM analysis.
+- `app/api/decisions/[id]/route.ts` returns owned decision status for polling and safely fails stale processing jobs.
 - `lib/session.ts` creates and validates DB-backed sessions.
 - `lib/analysis.ts` calls the LLM provider, parses JSON, validates it with Zod, and saves the result.
+- `lib/analysis-jobs.ts` creates and processes DB-backed analysis jobs.
+- `lib/analysis-rate-limit.ts` enforces a small per-user LLM request window.
 - `prisma/schema.prisma` defines users, sessions, decisions, and analyses.
 
 The frontend never receives an LLM API key and never submits a `userId`. The authenticated user is always resolved on the server from the session cookie.
@@ -94,6 +100,9 @@ Core models:
 - `Session`: hashed opaque token, user relation, expiration.
 - `Decision`: situation, accepted decision, optional reasoning, status, optional error message.
 - `DecisionAnalysis`: one latest analysis per decision with structured JSON fields and provider/model metadata.
+- `DecisionAnalysisRun`: immutable history entry for every successful analysis run.
+- `AnalysisJob`: queued/running/done/failed analysis work for create, retry, re-analysis, and edit triggers.
+- `AnalysisRequest`: timestamped per-user request records used for LLM rate limiting.
 
 Relationships:
 
@@ -101,26 +110,30 @@ Relationships:
 - User has many decisions.
 - Decision belongs to one user.
 - Decision has zero or one latest analysis.
+- Decision has many analysis history runs.
+- Decision has many analysis jobs.
 - DecisionAnalysis belongs to one decision.
 
-Prisma migration is included at:
+Prisma migrations are included at:
 
 ```bash
 prisma/migrations/20260519180000_init/migration.sql
+prisma/migrations/20260520200000_analysis_jobs_history/migration.sql
 ```
 
 ## LLM Analysis Flow
 
 1. A logged-in user submits a decision.
 2. The server action validates input and saves a `Decision` with status `PROCESSING`.
-3. The user is redirected to the decision details page with `?start=1`.
-4. A protected client runner calls `POST /api/decisions/:id/analyze`.
-5. The API route verifies the session and decision ownership.
-6. `lib/analysis.ts` sends the decision data to the configured LLM provider.
-7. The response must be valid JSON and is normalized with Zod.
-8. On success, the app upserts `DecisionAnalysis` and sets status `READY`.
-9. On failure, the app stores `FAILED` plus a safe error message.
-10. The details page polls status and refreshes when analysis completes.
+3. The server action creates an `AnalysisJob` with trigger `CREATE`, `EDIT`, `RETRY`, or `REANALYZE`.
+4. The user is redirected to the decision details page with `?start=1`.
+5. A protected client runner calls `POST /api/decisions/:id/analyze`.
+6. The API route verifies the session and decision ownership, applies per-user LLM rate limiting, and processes the latest queued job.
+7. `lib/analysis.ts` sends the decision data to the configured LLM provider.
+8. The response must be valid JSON and is normalized with Zod.
+9. On success, the app upserts `DecisionAnalysis`, creates a `DecisionAnalysisRun`, marks the job `DONE`, and sets decision status `READY`.
+10. On failure, the app marks the job `FAILED`, stores `FAILED` plus a safe error message on the decision, and logs technical details server-side only.
+11. The details page polls status and refreshes when analysis completes. If a processing job becomes stale, the status endpoint marks it failed so the UI does not spin forever.
 
 Expected LLM JSON:
 
@@ -390,8 +403,10 @@ These screenshots were captured from the deployed Vercel demo.
 8. Confirm completed analysis shows category, biases, alternatives, summary, risks, questions, next steps, and score.
 9. Temporarily remove `LLM_API_KEY`, create/retry a decision, and confirm `Помилка аналізу`.
 10. Restore `LLM_API_KEY` and use `Повторити аналіз`.
-11. Create a second user and confirm they cannot view the first user's decision URL.
-12. Test dashboard filters and sorting.
+11. Edit an existing decision and confirm it redirects to processing and creates a fresh analysis.
+12. Delete a decision and confirm it disappears from the dashboard.
+13. Create a second user and confirm they cannot view, edit, delete, or analyze the first user's decision URL.
+14. Test dashboard filters and sorting.
 
 ## Deployment
 
@@ -459,16 +474,15 @@ npm run start
 
 ## Known Limitations
 
-- The “background” analysis is MVP-friendly: the details page calls a protected analysis endpoint and polls until completion. For high traffic, use a durable queue such as BullMQ, Inngest, Trigger.dev, or a managed queue.
-- Only the latest analysis is stored per decision. Re-analysis replaces the previous structured analysis.
+- Background analysis is DB-backed and persists job state, but processing is still triggered by the protected API route rather than a dedicated external worker. For high traffic, use a durable queue or worker system such as BullMQ, Inngest, Trigger.dev, or a managed queue.
+- The UI shows the latest analysis by default and keeps a compact analysis history. A richer comparison view across analysis runs would be a future improvement.
 - npm audit currently recommends a breaking Next.js major upgrade for current advisories. This project uses patched Next 14.2.35 because the provided environment runs Node 18 and the app builds successfully there. For a production launch on a newer Node runtime, evaluate upgrading to the latest supported Next major.
 - Unit tests and a Playwright smoke test are included; a broader integration/e2e suite would be the next production-readiness step.
 
 ## Future Improvements
 
 - Add email verification and password reset.
-- Add a durable background job queue.
+- Add a dedicated background worker or external queue for analysis processing.
 - Expand Playwright coverage for access control, failed LLM analysis, and re-analysis.
 - Add export to Markdown/PDF.
-- Add editable decisions with automatic re-analysis prompts.
 - Add richer analytics by category, bias, and score over time.

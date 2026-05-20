@@ -1,5 +1,6 @@
-import { DecisionStatus } from "@prisma/client";
+import { AnalysisJobStatus, DecisionStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { failOpenAnalysisJobsForDecision } from "@/lib/analysis-jobs";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 
@@ -26,6 +27,19 @@ export async function GET(
       status: true,
       errorMessage: true,
       updatedAt: true,
+      analysisJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          status: true,
+          runAfter: true,
+          lockedAt: true,
+          startedAt: true,
+          updatedAt: true,
+          errorMessage: true
+        }
+      },
       analysis: {
         select: {
           category: true,
@@ -42,19 +56,50 @@ export async function GET(
   const isStaleProcessing =
     decision.status === DecisionStatus.PROCESSING &&
     Date.now() - decision.updatedAt.getTime() > STALE_PROCESSING_MS;
+  const latestJob = decision.analysisJobs[0];
+  const jobStaleTime =
+    latestJob?.startedAt ??
+    latestJob?.lockedAt ??
+    latestJob?.runAfter ??
+    latestJob?.updatedAt;
+  const isStaleJob =
+    decision.status === DecisionStatus.PROCESSING &&
+    latestJob?.status &&
+    (latestJob.status === AnalysisJobStatus.QUEUED ||
+      latestJob.status === AnalysisJobStatus.RUNNING) &&
+    jobStaleTime &&
+    Date.now() - jobStaleTime.getTime() > STALE_PROCESSING_MS;
 
-  if (isStaleProcessing) {
-    decision = await prisma.decision.update({
-      where: { id: decision.id },
-      data: {
-        status: DecisionStatus.FAILED,
-        errorMessage: STALE_PROCESSING_ERROR
+  if (isStaleProcessing || isStaleJob) {
+    await failOpenAnalysisJobsForDecision({
+      decisionId: decision.id,
+      userId: user.id,
+      errorMessage: STALE_PROCESSING_ERROR
+    });
+
+    decision = await prisma.decision.findFirstOrThrow({
+      where: {
+        id: params.id,
+        userId: user.id
       },
       select: {
         id: true,
         status: true,
         errorMessage: true,
         updatedAt: true,
+        analysisJobs: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            runAfter: true,
+            lockedAt: true,
+            startedAt: true,
+            updatedAt: true,
+            errorMessage: true
+          }
+        },
         analysis: {
           select: {
             category: true,

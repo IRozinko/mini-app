@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DecisionStatus, Prisma } from "@prisma/client";
-import { ArrowLeft, RotateCw } from "lucide-react";
-import { reanalyzeDecisionAction } from "@/app/actions/decisions";
+import { ArrowLeft, Pencil, RotateCw, Trash2 } from "lucide-react";
+import {
+  deleteDecisionAction,
+  reanalyzeDecisionAction
+} from "@/app/actions/decisions";
 import { AnalyzeRunner } from "@/components/analyze-runner";
 import { StatusBadge } from "@/components/status-badge";
 import { prisma } from "@/lib/prisma";
@@ -35,7 +38,13 @@ export default async function DecisionDetailPage({
       id: params.id,
       userId: user.id
     },
-    include: { analysis: true }
+    include: {
+      analysis: true,
+      analysisRuns: {
+        orderBy: { createdAt: "desc" },
+        take: 6
+      }
+    }
   });
 
   if (!decision) {
@@ -58,13 +67,26 @@ export default async function DecisionDetailPage({
           <ArrowLeft size={16} aria-hidden />
           Історія рішень
         </Link>
-        <form action={reanalyzeDecisionAction}>
-          <input type="hidden" name="decisionId" value={decision.id} />
-          <button className="button-secondary" type="submit">
-            <RotateCw size={16} aria-hidden />
-            {decision.status === DecisionStatus.FAILED ? "Повторити аналіз" : "Переаналізувати"}
-          </button>
-        </form>
+        <div className="flex flex-wrap gap-2">
+          <Link className="button-secondary" href={`/decisions/${decision.id}/edit`}>
+            <Pencil size={16} aria-hidden />
+            Редагувати
+          </Link>
+          <form action={reanalyzeDecisionAction}>
+            <input type="hidden" name="decisionId" value={decision.id} />
+            <button className="button-secondary" type="submit">
+              <RotateCw size={16} aria-hidden />
+              {decision.status === DecisionStatus.FAILED ? "Повторити аналіз" : "Переаналізувати"}
+            </button>
+          </form>
+          <form action={deleteDecisionAction}>
+            <input type="hidden" name="decisionId" value={decision.id} />
+            <button className="button-danger" type="submit">
+              <Trash2 size={16} aria-hidden />
+              Видалити рішення
+            </button>
+          </form>
+        </div>
       </div>
 
       <article className="panel p-6">
@@ -153,6 +175,32 @@ export default async function DecisionDetailPage({
               <SimpleList title="Фактори ризику" items={risks} />
               <SimpleList title="Питання для рефлексії" items={questions} />
               <SimpleList title="Практичні наступні кроки" items={nextSteps} />
+            </div>
+          </div>
+        ) : null}
+
+        {decision.analysisRuns.length > 1 ? (
+          <div className="panel p-6">
+            <h2 className="text-xl font-semibold">Історія аналізів</h2>
+            <div className="mt-4 divide-y divide-stone-200">
+              {decision.analysisRuns.map((run) => (
+                <div
+                  key={run.id}
+                  className="grid gap-2 py-3 text-sm sm:grid-cols-[1.2fr_1fr_1fr_auto]"
+                >
+                  <span className="text-stone-600">
+                    {new Intl.DateTimeFormat("uk-UA", {
+                      dateStyle: "medium",
+                      timeStyle: "short"
+                    }).format(run.createdAt)}
+                  </span>
+                  <span>{run.provider ? `${run.provider} / ` : ""}{run.model ?? "LLM"}</span>
+                  <span className="font-medium">{run.category}</span>
+                  <span className="font-semibold text-clay">
+                    {run.qualityScore ? `${run.qualityScore}/10` : "Без оцінки"}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         ) : null}

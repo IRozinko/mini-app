@@ -1,7 +1,15 @@
-import { AnalysisJobTrigger } from "@prisma/client";
+import { AnalysisJobStatus, AnalysisJobTrigger } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { assertAnalysisRateLimit, RateLimitError } from "@/lib/analysis-rate-limit";
-import { enqueueAnalysisJob, processAnalysisJob } from "@/lib/analysis-jobs";
+import {
+  assertAnalysisRateLimit,
+  RATE_LIMIT_MESSAGE,
+  RateLimitError
+} from "@/lib/analysis-rate-limit";
+import {
+  enqueueAnalysisJob,
+  failOpenAnalysisJobsForDecision,
+  processAnalysisJob
+} from "@/lib/analysis-jobs";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 
@@ -28,38 +36,38 @@ export async function POST(
     return NextResponse.json({ error: "Decision not found." }, { status: 404 });
   }
 
+  let job = await prisma.analysisJob.findFirst({
+    where: {
+      decisionId: decision.id,
+      userId: user.id,
+      status: AnalysisJobStatus.QUEUED
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
+  if (!job) {
+    job = await enqueueAnalysisJob({
+      decisionId: decision.id,
+      userId: user.id,
+      trigger: AnalysisJobTrigger.RETRY
+    });
+  }
+
   try {
     await assertAnalysisRateLimit(user.id);
 
-    let job = await prisma.analysisJob.findFirst({
-      where: {
+    const status = await processAnalysisJob(job.id, user.id);
+    return NextResponse.json({ ok: status === AnalysisJobStatus.DONE, jobStatus: status });
+  } catch (error) {
+    const status = error instanceof RateLimitError ? 429 : 500;
+    if (error instanceof RateLimitError) {
+      await failOpenAnalysisJobsForDecision({
         decisionId: decision.id,
         userId: user.id,
-        status: "QUEUED"
-      },
-      orderBy: { createdAt: "desc" }
-    });
-
-    if (!job) {
-      await enqueueAnalysisJob({
-        decisionId: decision.id,
-        userId: user.id,
-        trigger: AnalysisJobTrigger.RETRY
-      });
-      job = await prisma.analysisJob.findFirstOrThrow({
-        where: {
-          decisionId: decision.id,
-          userId: user.id,
-          status: "QUEUED"
-        },
-        orderBy: { createdAt: "desc" }
+        errorMessage: RATE_LIMIT_MESSAGE
       });
     }
 
-    await processAnalysisJob(job.id, user.id);
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    const status = error instanceof RateLimitError ? 429 : 500;
     return NextResponse.json(
       {
         error:

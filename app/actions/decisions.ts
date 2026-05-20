@@ -75,3 +75,77 @@ export async function reanalyzeDecisionAction(formData: FormData) {
 
   redirect(`/decisions/${decision.id}?start=1`);
 }
+
+export async function updateDecisionAction(
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const user = await requireUser();
+  const decisionId = String(formData.get("decisionId") ?? "");
+  const values = valuesFrom(formData);
+  const parsed = decisionSchema.safeParse(values);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Перевірте поля форми.",
+      fieldErrors: parsed.error.flatten().fieldErrors,
+      values: {
+        decisionId,
+        ...values
+      }
+    };
+  }
+
+  const existingDecision = await prisma.decision.findFirst({
+    where: {
+      id: decisionId,
+      userId: user.id
+    },
+    select: { id: true }
+  });
+
+  if (!existingDecision) {
+    redirect("/dashboard");
+  }
+
+  await prisma.decision.update({
+    where: { id: existingDecision.id },
+    data: {
+      situation: parsed.data.situation,
+      decision: parsed.data.decision,
+      reasoning: parsed.data.reasoning,
+      status: "PROCESSING",
+      errorMessage: null
+    }
+  });
+
+  await enqueueAnalysisJob({
+    decisionId: existingDecision.id,
+    userId: user.id,
+    trigger: AnalysisJobTrigger.EDIT
+  });
+
+  redirect(`/decisions/${existingDecision.id}?start=1`);
+}
+
+export async function deleteDecisionAction(formData: FormData) {
+  const user = await requireUser();
+  const decisionId = String(formData.get("decisionId") ?? "");
+
+  const decision = await prisma.decision.findFirst({
+    where: {
+      id: decisionId,
+      userId: user.id
+    },
+    select: { id: true }
+  });
+
+  if (decision) {
+    await prisma.decision.delete({
+      where: { id: decision.id }
+    });
+  }
+
+  redirect("/dashboard");
+}
