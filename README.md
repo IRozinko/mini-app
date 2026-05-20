@@ -7,9 +7,9 @@ The app implements registration, login, protected pages, PostgreSQL persistence,
 ## Links
 
 - GitHub repository URL: https://github.com/IRozinko/mini-app
-- Demo URL: `TODO: add deployed demo URL after Vercel/Railway/Render deployment`
+- Demo URL: https://mini-app-zeta-ebon.vercel.app
 
-Deployment was not performed from this environment because no hosting account or production database credentials were available. The project is ready to deploy; exact steps are below.
+The demo is deployed on Vercel and connected to a production PostgreSQL database. LLM analysis is executed server-side through an OpenAI-compatible provider; secrets are stored only as environment variables.
 
 ## Quick Start
 
@@ -22,6 +22,8 @@ npm run dev
 ```
 
 Open `http://localhost:3000`, register a user, and create the first decision.
+
+Live demo: https://mini-app-zeta-ebon.vercel.app
 
 For real LLM analysis, set `LLM_API_KEY` in `.env`. Without a key, the app still saves decisions and shows a safe `FAILED` analysis state.
 
@@ -39,6 +41,24 @@ For real LLM analysis, set `LLM_API_KEY` in `.env`. Without a key, the app still
 - Retry/re-analysis button for failed or existing analyses.
 - Dashboard with status counts, category filter, status filter, quality sorting, and bias frequency summary.
 - Empty, loading, processing, ready, failed, and validation states.
+
+## Product Walkthrough
+
+1. A visitor opens the landing page and chooses to register or log in.
+2. After authentication, the user lands on a private dashboard with their own decision history.
+3. The user creates a new decision record by describing the situation, the accepted decision, and optional reasoning.
+4. The record is saved immediately with `PROCESSING` status and the protected analysis endpoint starts the LLM analysis.
+5. The decision details page polls the server until the analysis becomes `READY` or `FAILED`.
+6. When the analysis is ready, the app shows the decision category, possible cognitive biases, missed alternatives, risk factors, reflection questions, practical next steps, and quality score.
+7. The dashboard summarizes all user decisions with status counters, category filters, sorting, score badges, and the most frequent cognitive biases.
+
+## Evaluation Highlights
+
+- The app uses real PostgreSQL persistence, not in-memory mock data.
+- Authentication is implemented with hashed passwords and database-backed HTTP-only sessions.
+- LLM calls happen only on the server; the API key is never exposed to the browser.
+- Every decision and analysis operation is scoped to the authenticated user.
+- The project includes Docker-based local database setup, Prisma migrations, unit tests, Playwright smoke testing, and GitHub Actions CI.
 
 ## Tech Stack
 
@@ -314,12 +334,28 @@ Recommended deployment flow:
 
 ## Screenshots
 
-Screenshots have not been captured yet. Suggested paths for submission assets:
+The live application is available at https://mini-app-zeta-ebon.vercel.app.
 
-- `docs/screenshots/landing.png`
-- `docs/screenshots/dashboard.png`
-- `docs/screenshots/decision-detail.png`
-- `docs/screenshots/analysis-failed.png`
+For final submission, include screenshots from the deployed app in the following locations:
+
+| Screen | Suggested file | What it should show |
+| --- | --- | --- |
+| Landing page | `docs/screenshots/landing.png` | Product positioning, primary CTA, login/register navigation |
+| Register/Login | `docs/screenshots/auth.png` | Real authentication entry point |
+| Dashboard | `docs/screenshots/dashboard.png` | Private decision history, filters, status counters, bias summary |
+| New decision form | `docs/screenshots/new-decision.png` | Situation, accepted decision, optional reasoning fields |
+| Decision analysis | `docs/screenshots/decision-detail.png` | Original decision text and generated LLM analysis |
+| Failed/retry state | `docs/screenshots/analysis-failed.png` | Safe error message and retry/re-analysis behavior |
+
+Recommended capture flow:
+
+```bash
+npm run db:up
+npm run prisma:migrate
+LLM_TEST_MODE=mock npm run dev
+```
+
+Then open `http://localhost:3000`, register a temporary user, create a sample decision, and capture the screens above.
 
 ## Manual Testing Checklist
 
@@ -338,6 +374,13 @@ Screenshots have not been captured yet. Suggested paths for submission assets:
 
 ## Deployment
 
+### Current Vercel Demo
+
+- Demo: https://mini-app-zeta-ebon.vercel.app
+- Production branch: `main`
+- Database: hosted PostgreSQL
+- Runtime secrets: configured through Vercel Environment Variables
+
 ### Vercel
 
 1. Push this repository to GitHub.
@@ -348,11 +391,14 @@ Screenshots have not been captured yet. Suggested paths for submission assets:
 ```bash
 DATABASE_URL=
 SESSION_SECRET=
-NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
+NEXT_PUBLIC_APP_URL=https://mini-app-zeta-ebon.vercel.app
 LLM_API_KEY=
 LLM_MODEL=gpt-4o-mini
 LLM_BASE_URL=https://api.openai.com/v1
+LLM_TIMEOUT_MS=30000
 ```
+
+Do not set `LLM_TEST_MODE` in production. It is only for deterministic local/smoke tests.
 
 5. Set build command:
 
@@ -374,6 +420,8 @@ npm run prisma:deploy
 
 On Vercel, a common production setup is to run `prisma migrate deploy` in a CI step or as a one-off command from a local machine with the production `DATABASE_URL`.
 
+After changing Vercel environment variables, trigger a new deployment so the runtime receives the updated values.
+
 ### Railway or Render
 
 1. Create a PostgreSQL service.
@@ -393,13 +441,13 @@ npm run start
 - The “background” analysis is MVP-friendly: the details page calls a protected analysis endpoint and polls until completion. For high traffic, use a durable queue such as BullMQ, Inngest, Trigger.dev, or a managed queue.
 - Only the latest analysis is stored per decision. Re-analysis replaces the previous structured analysis.
 - npm audit currently recommends a breaking Next.js major upgrade for current advisories. This project uses patched Next 14.2.35 because the provided environment runs Node 18 and the app builds successfully there. For a production launch on a newer Node runtime, evaluate upgrading to the latest supported Next major.
-- There are no automated integration tests; a manual testing checklist is included.
+- Unit tests and a Playwright smoke test are included; a broader integration/e2e suite would be the next production-readiness step.
 
 ## Future Improvements
 
 - Add email verification and password reset.
 - Add a durable background job queue.
-- Add automated Playwright flows for auth and decision analysis.
+- Expand Playwright coverage for access control, failed LLM analysis, and re-analysis.
 - Add export to Markdown/PDF.
 - Add editable decisions with automatic re-analysis prompts.
 - Add richer analytics by category, bias, and score over time.
