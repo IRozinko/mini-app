@@ -140,36 +140,33 @@ export async function analyzeDecisionForUser(decisionId: string, userId: string)
     const parsedJson = parseLlmJsonContent(llm.content);
     const normalized = llmAnalysisSchema.parse(parsedJson);
     const rawResponse = parsedJson as Prisma.InputJsonValue;
+    const analysisData = {
+      category: normalized.category,
+      cognitiveBiases: normalized.cognitiveBiases,
+      missedAlternatives: normalized.missedAlternatives,
+      summary: normalized.summary,
+      risks: normalized.risks,
+      reflectionQuestions: normalized.reflectionQuestions,
+      nextSteps: normalized.nextSteps,
+      qualityScore: normalized.qualityScore,
+      rawResponse,
+      provider: llm.provider,
+      model: llm.model
+    };
 
     await prisma.$transaction([
       prisma.decisionAnalysis.upsert({
         where: { decisionId: decision.id },
         create: {
           decisionId: decision.id,
-          category: normalized.category,
-          cognitiveBiases: normalized.cognitiveBiases,
-          missedAlternatives: normalized.missedAlternatives,
-          summary: normalized.summary,
-          risks: normalized.risks,
-          reflectionQuestions: normalized.reflectionQuestions,
-          nextSteps: normalized.nextSteps,
-          qualityScore: normalized.qualityScore,
-          rawResponse,
-          provider: llm.provider,
-          model: llm.model
+          ...analysisData
         },
-        update: {
-          category: normalized.category,
-          cognitiveBiases: normalized.cognitiveBiases,
-          missedAlternatives: normalized.missedAlternatives,
-          summary: normalized.summary,
-          risks: normalized.risks,
-          reflectionQuestions: normalized.reflectionQuestions,
-          nextSteps: normalized.nextSteps,
-          qualityScore: normalized.qualityScore,
-          rawResponse,
-          provider: llm.provider,
-          model: llm.model
+        update: analysisData
+      }),
+      prisma.decisionAnalysisRun.create({
+        data: {
+          decisionId: decision.id,
+          ...analysisData
         }
       }),
       prisma.decision.update({
