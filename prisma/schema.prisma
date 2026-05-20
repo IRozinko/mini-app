@@ -13,15 +13,31 @@ enum DecisionStatus {
   FAILED
 }
 
+enum AnalysisJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum AnalysisJobTrigger {
+  CREATE
+  RETRY
+  REANALYZE
+  EDIT
+}
+
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  name         String?
-  passwordHash String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  sessions     Session[]
-  decisions    Decision[]
+  id               String            @id @default(cuid())
+  email            String            @unique
+  name             String?
+  passwordHash     String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sessions         Session[]
+  decisions        Decision[]
+  analysisJobs     AnalysisJob[]
+  analysisRequests AnalysisRequest[]
 }
 
 model Session {
@@ -37,17 +53,19 @@ model Session {
 }
 
 model Decision {
-  id           String            @id @default(cuid())
+  id           String             @id @default(cuid())
   userId       String
   situation    String
   decision     String
   reasoning    String?
-  status       DecisionStatus    @default(PROCESSING)
+  status       DecisionStatus     @default(PROCESSING)
   errorMessage String?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   analysis     DecisionAnalysis?
+  analysisRuns DecisionAnalysisRun[]
+  analysisJobs AnalysisJob[]
 
   @@index([userId, createdAt])
   @@index([status])
@@ -70,4 +88,56 @@ model DecisionAnalysis {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   decision            Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+}
+
+model DecisionAnalysisRun {
+  id                  String   @id @default(cuid())
+  decisionId          String
+  category            String
+  cognitiveBiases     Json
+  missedAlternatives  Json
+  summary             String?
+  risks               Json?
+  reflectionQuestions Json?
+  nextSteps           Json?
+  qualityScore        Int?
+  rawResponse         Json?
+  provider            String?
+  model               String?
+  createdAt           DateTime @default(now())
+  decision            Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([decisionId, createdAt])
+}
+
+model AnalysisJob {
+  id           String            @id @default(cuid())
+  decisionId   String
+  userId       String
+  status       AnalysisJobStatus @default(QUEUED)
+  trigger      AnalysisJobTrigger
+  attempts     Int               @default(0)
+  maxAttempts  Int               @default(3)
+  runAfter     DateTime          @default(now())
+  lockedAt     DateTime?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  errorMessage String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  decision     Decision          @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAfter])
+  @@index([decisionId, status])
+  @@index([userId, createdAt])
+}
+
+model AnalysisRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
