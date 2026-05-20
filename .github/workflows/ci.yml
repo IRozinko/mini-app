@@ -10,6 +10,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: decision_insight
+          POSTGRES_USER: decision_user
+          POSTGRES_PASSWORD: decision_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U decision_user -d decision_insight"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       DATABASE_URL: postgresql://decision_user:decision_password@localhost:5432/decision_insight?schema=public
       SESSION_SECRET: ci-session-secret-that-is-long-enough-for-tests
@@ -34,6 +49,12 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Test
+        run: npm run test
 
       - name: Lint
         run: npm run lint

@@ -1,59 +1,47 @@
 import "server-only";
 
-import { z } from "zod";
+import type { Prisma } from "@prisma/client";
+import { llmAnalysisSchema } from "@/lib/analysis-schema";
+import { parseLlmJsonContent } from "@/lib/llm-json";
 import { prisma } from "@/lib/prisma";
 
 const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 30000);
 const SAFE_ANALYSIS_ERROR =
   "Не вдалося виконати LLM-аналіз. Перевірте налаштування провайдера та повторіть спробу.";
 
-const biasSchema = z.object({
-  name: z.string().min(1),
-  explanation: z.string().min(1)
-});
-
-const alternativeSchema = z.object({
-  alternative: z.string().min(1),
-  whyItMatters: z.string().min(1)
-});
-
-export const llmAnalysisSchema = z.object({
-  category: z.string().min(1),
-  cognitiveBiases: z.array(biasSchema).default([]),
-  missedAlternatives: z.array(alternativeSchema).default([]),
-  summary: z.string().optional(),
-  risks: z.array(z.string()).default([]),
-  reflectionQuestions: z.array(z.string()).default([]),
-  nextSteps: z.array(z.string()).default([]),
-  qualityScore: z.coerce.number().int().min(1).max(10).optional()
-});
-
 type ChatMessage = {
   role: "system" | "user";
   content: string;
 };
 
-function extractJson(content: string) {
-  const trimmed = content.trim();
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-    return trimmed;
-  }
-
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) {
-    return fenced[1].trim();
-  }
-
-  const first = trimmed.indexOf("{");
-  const last = trimmed.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    return trimmed.slice(first, last + 1);
-  }
-
-  throw new Error("LLM response did not contain JSON.");
-}
-
 async function callLlm(messages: ChatMessage[]) {
+  if (process.env.LLM_TEST_MODE === "mock") {
+    return {
+      content: JSON.stringify({
+        category: "Тестова категорія",
+        cognitiveBiases: [
+          {
+            name: "Підтверджувальне упередження",
+            explanation: "Користувач міг приділяти більше уваги аргументам на користь вже обраного рішення."
+          }
+        ],
+        missedAlternatives: [
+          {
+            alternative: "Провести короткий експеримент перед остаточним вибором",
+            whyItMatters: "Це зменшує ризик великої помилки без значних витрат."
+          }
+        ],
+        summary: "Тестовий LLM-аналіз створено без зовнішнього провайдера.",
+        risks: ["Недостатньо даних для впевненого вибору"],
+        reflectionQuestions: ["Яке припущення найважливіше перевірити?"],
+        nextSteps: ["Зібрати один додатковий сигнал перед дією"],
+        qualityScore: 7
+      }),
+      model: "test-mock",
+      provider: "test"
+    };
+  }
+
   const apiKey = process.env.LLM_API_KEY;
   if (!apiKey) {
     throw new Error("LLM_API_KEY is not configured");
@@ -149,8 +137,9 @@ export async function analyzeDecisionForUser(decisionId: string, userId: string)
 
   try {
     const llm = await callLlm(messages);
-    const parsedJson = JSON.parse(extractJson(llm.content));
+    const parsedJson = parseLlmJsonContent(llm.content);
     const normalized = llmAnalysisSchema.parse(parsedJson);
+    const rawResponse = parsedJson as Prisma.InputJsonValue;
 
     await prisma.$transaction([
       prisma.decisionAnalysis.upsert({
@@ -165,7 +154,7 @@ export async function analyzeDecisionForUser(decisionId: string, userId: string)
           reflectionQuestions: normalized.reflectionQuestions,
           nextSteps: normalized.nextSteps,
           qualityScore: normalized.qualityScore,
-          rawResponse: parsedJson,
+          rawResponse,
           provider: llm.provider,
           model: llm.model
         },
@@ -178,7 +167,7 @@ export async function analyzeDecisionForUser(decisionId: string, userId: string)
           reflectionQuestions: normalized.reflectionQuestions,
           nextSteps: normalized.nextSteps,
           qualityScore: normalized.qualityScore,
-          rawResponse: parsedJson,
+          rawResponse,
           provider: llm.provider,
           model: llm.model
         }

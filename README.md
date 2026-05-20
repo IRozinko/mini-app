@@ -11,6 +11,20 @@ The app implements registration, login, protected pages, PostgreSQL persistence,
 
 Deployment was not performed from this environment because no hosting account or production database credentials were available. The project is ready to deploy; exact steps are below.
 
+## Quick Start
+
+```bash
+cp .env.example .env
+npm install
+npm run db:up
+npm run prisma:migrate
+npm run dev
+```
+
+Open `http://localhost:3000`, register a user, and create the first decision.
+
+For real LLM analysis, set `LLM_API_KEY` in `.env`. Without a key, the app still saves decisions and shows a safe `FAILED` analysis state.
+
 ## Features
 
 - Secure custom credentials auth with hashed passwords.
@@ -143,12 +157,14 @@ LLM_API_KEY="your-provider-api-key"
 LLM_MODEL="gpt-4o-mini"
 LLM_BASE_URL="https://api.openai.com/v1"
 LLM_TIMEOUT_MS="30000"
+LLM_TEST_MODE=""
 ```
 
 Notes:
 
 - `LLM_BASE_URL` is OpenAI-compatible. For OpenAI, keep `https://api.openai.com/v1`.
 - `LLM_TIMEOUT_MS` controls the server-side LLM request timeout.
+- `LLM_TEST_MODE=mock` enables deterministic local smoke tests without an external LLM call.
 - If `LLM_API_KEY` is missing, analysis correctly fails and stores a `FAILED` state.
 - Do not commit `.env`.
 
@@ -237,6 +253,18 @@ No seed user is required. Create a test user through the `Зареєструва
 
 ## Build and Verification
 
+Run unit tests:
+
+```bash
+npm run test
+```
+
+Run optional Playwright smoke tests after the database is up and migrated:
+
+```bash
+LLM_TEST_MODE=mock npm run test:smoke
+```
+
 Run lint:
 
 ```bash
@@ -258,9 +286,40 @@ npm run build
 Verified in this environment:
 
 - `npm run prisma:generate` passed.
+- `npm run test` passed.
 - `npm run lint` passed.
 - `npm run typecheck` passed.
 - `npm run build` passed.
+
+## CI/CD
+
+GitHub Actions runs on pushes and pull requests to `main`.
+
+The workflow:
+
+- Starts a PostgreSQL 16 service.
+- Runs `npm ci`.
+- Runs `npx prisma generate`.
+- Applies migrations with `npx prisma migrate deploy`.
+- Runs unit tests.
+- Runs lint.
+- Runs TypeScript typecheck.
+- Runs production build.
+
+Recommended deployment flow:
+
+- Vercel preview deployments for pull requests.
+- Production deployment from `main`.
+- Run `npx prisma migrate deploy` against the production database before or during production deploy.
+
+## Screenshots
+
+Screenshots have not been captured yet. Suggested paths for submission assets:
+
+- `docs/screenshots/landing.png`
+- `docs/screenshots/dashboard.png`
+- `docs/screenshots/decision-detail.png`
+- `docs/screenshots/analysis-failed.png`
 
 ## Manual Testing Checklist
 
