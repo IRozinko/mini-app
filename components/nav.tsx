@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { BrainCircuit, LogOut, PlusCircle } from "lucide-react";
-import { logoutAction } from "@/app/actions/auth";
+import { BrainCircuit } from "lucide-react";
+import { NavActions } from "@/components/nav-actions";
 import { getCurrentUser } from "@/lib/session";
 
 export async function Nav() {
@@ -16,34 +16,7 @@ export async function Nav() {
           <span className="font-bold">Decision Insight</span>
         </Link>
 
-        <div className="flex items-center gap-2">
-          {user ? (
-            <>
-              <Link className="button-secondary" href="/decisions/new">
-                <PlusCircle size={16} aria-hidden />
-                Новий запис
-              </Link>
-              <Link className="button-secondary hidden sm:inline-flex" href="/dashboard">
-                Історія рішень
-              </Link>
-              <form action={logoutAction}>
-                <button className="button-secondary" type="submit" title="Вийти">
-                  <LogOut size={16} aria-hidden />
-                  <span className="hidden sm:inline">Вийти</span>
-                </button>
-              </form>
-            </>
-          ) : (
-            <>
-              <Link className="button-secondary" href="/login">
-                Увійти
-              </Link>
-              <Link className="button-primary" href="/register">
-                Зареєструватися
-              </Link>
-            </>
-          )}
-        </div>
+        <NavActions isAuthenticated={Boolean(user)} />
       </nav>
     </header>
   );
